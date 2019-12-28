@@ -74,6 +74,7 @@ private:
   FolderMetadata *_metadata;
   EncryptedFile _encryptedFile;
   QString _completeFileName;
+  bool _localLocked;
 };
 
 
