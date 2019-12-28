@@ -11,6 +11,7 @@
 #include <QTemporaryFile>
 #include <QLoggingCategory>
 #include <QMimeDatabase>
+#include <QRandomGenerator>
 
 namespace OCC {
 
@@ -89,6 +90,21 @@ void PropagateUploadEncrypted::slotFolderEncryptedIdReceived(const QStringList &
 
 void PropagateUploadEncrypted::slotTryLock(const QByteArray& fileId)
 {
+  // retrieve the local lock first before we rush and go to the server
+  // TODO : limit time on this, no need to wait too long.
+  _localLocked = false;
+  int tries = 0;
+  while (!_localLocked) {
+    _localLocked = _propagator->account()->e2e()->localLockFolder(fileId);
+    if (!_localLocked) {
+      if (tries++ == 250) { // max 250 tries = ~5 seconds
+        qCInfo(lcPropagateUploadEncrypted) << "Giving up trying to get the local lock for fileId " << fileId;
+        break;
+      }
+      usleep(20); // wait for 20 ms before trying again 
+    } 
+  }
+
   auto *lockJob = new LockEncryptFolderApiJob(_propagator->account(), fileId, this);
   connect(lockJob, &LockEncryptFolderApiJob::success, this, &PropagateUploadEncrypted::slotFolderLockedSuccessfully);
   connect(lockJob, &LockEncryptFolderApiJob::error, this, &PropagateUploadEncrypted::slotFolderLockedError);
@@ -232,38 +248,51 @@ void PropagateUploadEncrypted::slotFolderLockedError(const QByteArray& fileId, i
     Q_UNUSED(httpErrorCode);
     /* try to call the lock from 5 to 5 seconds
      * and fail if it's more than 5 minutes. */
-    QTimer::singleShot(5000, this, [this, fileId]{
+
+    int waitTimeMs = QRandomGenerator::securelySeeded().bounded(1000, 5000);
+    qCInfo(lcPropagateUploadEncrypted) << "Failed to lock folder. Waiting " << waitTimeMs << " ms before trying again";
+    QTimer::singleShot(waitTimeMs, this, [this, fileId]{
         if (!_currentLockingInProgress) {
-            qCDebug(lcPropagateUploadEncrypted) << "Error locking the folder while no other update is locking it up.";
-            qCDebug(lcPropagateUploadEncrypted) << "Perhaps another client locked it.";
-            qCDebug(lcPropagateUploadEncrypted) << "Abort";
-        return;
+            qCInfo(lcPropagateUploadEncrypted) << "Error locking the folder while no other update is locking it up.";
+            qCInfo(lcPropagateUploadEncrypted) << "Perhaps another client locked it.";
+            //qCInfo(lcPropagateUploadEncrypted) << "Abort";
+            qCInfo(lcPropagateUploadEncrypted) << "NOT Aborting. Keep trying...";
+            //return;
         }
 
         // Perhaps I should remove the elapsed timer if the lock is from this client?
         if (_folderLockFirstTry.elapsed() > /* five minutes */ 1000 * 60 * 5 ) {
-            qCDebug(lcPropagateUploadEncrypted) << "One minute passed, ignoring more attemps to lock the folder.";
-        return;
+            qCInfo(lcPropagateUploadEncrypted) << "Five minutes passed, ignoring more attemps to lock the folder.";
+            emit error();
+            return;
         }
         slotTryLock(fileId);
     });
 
-    qCDebug(lcPropagateUploadEncrypted) << "Folder" << fileId << "Coundn't be locked.";
+    qCInfo(lcPropagateUploadEncrypted) << "Folder" << fileId << "couldn't be locked.";
+    //emit error();
 }
 
 void PropagateUploadEncrypted::slotFolderEncryptedIdError(QNetworkReply *r)
 {
     Q_UNUSED(r);
     qCDebug(lcPropagateUploadEncrypted) << "Error retrieving the Id of the encrypted folder.";
+    //emit error();
 }
 
 void PropagateUploadEncrypted::slotFolderEncryptedStatusError(int error)
 {
     qCDebug(lcPropagateUploadEncrypted) << "Failed to retrieve the status of the folders." << error;
+    //emit error();
 }
 
 void PropagateUploadEncrypted::unlockFolder()
 {
+    if (_localLocked = true) {
+      _propagator->account()->e2e()->localUnlockFolder(_folderId);
+      _localLocked = false;      
+    }
+
     qDebug() << "Calling Unlock";
     auto *unlockJob = new UnlockEncryptFolderApiJob(_propagator->account(),
         _folderId, _folderToken, this);

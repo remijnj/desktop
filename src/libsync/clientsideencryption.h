@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QVector>
 #include <QMap>
+#include <QMutex>
 
 #include <openssl/evp.h>
 
@@ -84,6 +85,10 @@ public:
     // to be used together with FolderStatusModel::FolderInfo::_path.
     bool isFolderEncrypted(const QString& path) const;
     void setFolderEncryptedStatus(const QString& path, bool status);
+    
+    // set/unset a local lock on a folder, before going to the server
+    bool localLockFolder(const QByteArray& folder);
+    void localUnlockFolder(const QByteArray& folder);
 
     void forgetSensitiveData();
 
@@ -122,6 +127,10 @@ private:
     //TODO: Save this on disk.
     QMap<QByteArray, QByteArray> _folder2token;
     QMap<QString, bool> _folder2encryptedStatus;
+
+    // local locks on folders
+    QMap<QByteArray, bool> _folder2localLockStatus;
+    QMutex localLockMutex;
 
 public:
     //QSslKey _privateKey;

@@ -30,6 +30,7 @@
 #include <QLineEdit>
 #include <QIODevice>
 #include <QUuid>
+#include <QMutexLocker>
 
 #include <keychain.h>
 #include "common/utility.h"
@@ -682,6 +683,23 @@ void ClientSideEncryption::setFolderEncryptedStatus(const QString& folder, bool 
 {
     qCDebug(lcCse) << "Setting folder" << folder << "as encrypted" << status;
     _folder2encryptedStatus[folder] = status;
+}
+
+bool ClientSideEncryption::localLockFolder(const QByteArray& folder)
+{
+    QMutexLocker locker(&localLockMutex);
+    if (_folder2localLockStatus[folder] == true) { // locked
+        return false; // failure to lock, folder is already locked
+    } else { 
+       _folder2localLockStatus[folder] = true;
+       return true;
+    }
+}
+
+void ClientSideEncryption::localUnlockFolder(const QByteArray& folder)
+{
+    QMutexLocker locker(&localLockMutex);
+    _folder2localLockStatus[folder] = false;
 }
 
 void ClientSideEncryption::privateKeyFetched(Job *incoming) {
