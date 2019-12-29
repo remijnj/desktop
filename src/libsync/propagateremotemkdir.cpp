@@ -215,11 +215,14 @@ void PropagateRemoteMkdir::slotStartMarkEncryptedJob()
 void PropagateRemoteMkdir::slotEncryptionFlagSuccess(const QByteArray& fileId)
 {
     _job->account()->e2e()->setFolderEncryptedStatus(_item->_file, true);
-    auto lockJob = new LockEncryptFolderApiJob(_job->account(), fileId);
-    connect(lockJob, &LockEncryptFolderApiJob::success,
-            this, &PropagateRemoteMkdir::slotLockForEncryptionSuccess);
-    connect(lockJob, &LockEncryptFolderApiJob::error,
-            this, &PropagateRemoteMkdir::slotLockForEncryptionError);
+    slotTryLock(fileId);
+}
+
+void PropagateRemoteMkdir::slotTryLock(const QByteArray& fileId)
+{
+    auto *lockJob = new LockEncryptFolderApiJob(propagator()->account(), fileId, this);
+    connect(lockJob, &LockEncryptFolderApiJob::success, this, &PropagateRemoteMkdir::slotLockForEncryptionSuccess);
+    connect(lockJob, &LockEncryptFolderApiJob::error, this, &PropagateRemoteMkdir::slotLockForEncryptionError);
     lockJob->start();
     _job = lockJob;
 }
@@ -285,10 +288,19 @@ void PropagateRemoteMkdir::slotLockForEncryptionError(const QByteArray& fileId, 
 {
     propagator()->_activeJobList.removeOne(this);
 
-    Q_UNUSED(fileId);
     Q_UNUSED(httpErrorCode);
+    /* try to call the lock from 5 to 5 seconds
+     * and fail if it's more than 5 minutes. */
+    QTimer::singleShot(5000, this, [this, fileId]{
+        // Perhaps I should remove the elapsed timer if the lock is from this client?
+        if (_folderLockFirstTry.elapsed() > /* five minutes */ 1000 * 60 * 5 ) {
+            qCDebug(lcPropagateRemoteMkdir) << "Five minutes passed, ignoring more attemps to lock the folder.";
+            done(SyncFileItem::NormalError, "Error locking directory");
+        }
+        slotTryLock(fileId);
+    });
 
-    qCInfo(lcPropagateRemoteMkdir) << "Locking error" << httpErrorCode;
+    qCInfo(lcPropagateRemoteMkdir) << "Folder" << fileId << "Couldn't be locked. Error" << httpErrorCode;
 
     done(SyncFileItem::NormalError, "Error locking directory");
 }
