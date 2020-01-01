@@ -291,6 +291,7 @@ void PropagateRemoteMkdir::slotLockForEncryptionError(const QByteArray& fileId, 
     Q_UNUSED(httpErrorCode);
     /* try to call the lock from 5 to 5 seconds
      * and fail if it's more than 5 minutes. */
+    qCInfo(lcPropagateRemoteMkdir) << "Folder" << fileId << "locking failed. Trying to lock again in 5 seconds.";
     QTimer::singleShot(5000, this, [this, fileId]{
         // Perhaps I should remove the elapsed timer if the lock is from this client?
         if (_folderLockFirstTry.elapsed() > /* five minutes */ 1000 * 60 * 5 ) {
@@ -299,10 +300,6 @@ void PropagateRemoteMkdir::slotLockForEncryptionError(const QByteArray& fileId, 
         }
         slotTryLock(fileId);
     });
-
-    qCInfo(lcPropagateRemoteMkdir) << "Folder" << fileId << "Couldn't be locked. Error" << httpErrorCode;
-
-    done(SyncFileItem::NormalError, "Error locking directory");
 }
 
 void PropagateRemoteMkdir::slotUnlockFolderError(const QByteArray& fileId, int httpErrorCode)
