@@ -230,11 +230,8 @@ void PropagateUploadEncrypted::slotFolderLockedError(const QByteArray& fileId, i
 {
     Q_UNUSED(httpErrorCode);
 
-    // wait for a random time between 100ms and 3 seconds, this tries to race less between multiple 
-    // files in one directory
-    int waitTimeMs = QRandomGenerator::securelySeeded().bounded(100, 3000);
-    qCInfo(lcPropagateUploadEncrypted) << "Failed to lock folder. Waiting " << waitTimeMs << " ms before trying again";
-    QTimer::singleShot(waitTimeMs, this, [this, fileId]{
+    qCInfo(lcPropagateUploadEncrypted) << "Failed to lock folder. Waiting " << waitTimeMs << "5 seconds before trying again";
+    QTimer::singleShot(5000, this, [this, fileId]{
         // Perhaps I should remove the elapsed timer if the lock is from this client?
         if (_folderLockFirstTry.elapsed() > /* five minutes */ 1000 * 60 * 5 ) {
             qCDebug(lcPropagateUploadEncrypted) << "Five minutes passed, ignoring more attemps to lock the folder.";
@@ -242,8 +239,6 @@ void PropagateUploadEncrypted::slotFolderLockedError(const QByteArray& fileId, i
         }
         slotTryLock(fileId);
     });
-
-    qCDebug(lcPropagateUploadEncrypted) << "Folder" << fileId << "Coundn't be locked.";
 }
 
 void PropagateUploadEncrypted::slotFolderEncryptedIdError(QNetworkReply *r)
