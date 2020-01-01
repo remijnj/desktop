@@ -63,6 +63,7 @@ private slots:
     void slotStartMarkEncryptedJob();
     void slotEncryptionFlagSuccess(const QByteArray &folderId);
     void slotEncryptionFlagError(const QByteArray &folderId, int httpReturnCode);
+    void slotTryLock(const QByteArray& folderId);
     void slotLockForEncryptionSuccess(const QByteArray& folderId, const QByteArray& token);
     void slotLockForEncryptionError(const QByteArray &folderId, int httpReturnCode);
     void slotUnlockFolderSuccess(const QByteArray& folderId);
@@ -75,5 +76,6 @@ private slots:
 private:
     OwncloudPropagator *_propagator;
     bool _needsEncryption;
+    QElapsedTimer _folderLockFirstTry;
 };
 }
